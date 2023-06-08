@@ -72,19 +72,28 @@ int main(int argc, char **argv)
 
     while (!breakReceived)
     {
-        // try to receive some data, but don't block.
+        // try to receive some data without blocking.
+        // (Blocking inhibits the ^C capture.)
         int slen = sizeof(sockaddr_in); 
-        int message_len = recvfrom(server_socket, message, BUFLEN-1, 0, (sockaddr*)&client, &slen);
+        int message_len = recvfrom(server_socket, message, BUFLEN-1, MSG_PEEK, (sockaddr*)&client, &slen);
         if (message_len == SOCKET_ERROR)
         {
             printf("recvfrom() failed: %d\n", WSAGetLastError());
             exit(0);
         }
-        message[message_len] = '\0';
-        char outbuffer[512];
-        sprintf(outbuffer, "[%s:%d] %s", inet_ntoa(client.sin_addr), ntohs(client.sin_port), message);
-        puts(outbuffer);
-        fputs(outbuffer, file); fputs("\n", file);
+        if (message_len != 0)
+        {
+            // If the peek showed there was data, then we need to remove it from the queue
+            // with a second call to recvfrom.
+            message_len = recvfrom(server_socket, message, BUFLEN - 1, 0, (sockaddr*)&client, &slen);
+            // We assume no \n at the end.
+            if (message_len > 0 && message[message_len - 1] == '\n') message_len--;
+            message[message_len] = '\0';
+            char outbuffer[512];
+            sprintf(outbuffer, "[%s:%d] %s", inet_ntoa(client.sin_addr), ntohs(client.sin_port), message);
+            puts(outbuffer);
+            fputs(outbuffer, file); fputs("\n", file);
+        }
     }
     fclose(file);
     closesocket(server_socket);
